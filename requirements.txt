@@ -6,3 +6,12 @@ prefect
 redis
 mlflow
 onnxruntime
+fastapi>=0.104
+uvicorn[standard]>=0.23
+
+# -- Dev (opcional)
+# black>=23.0
+isort>=5.0
+# pylint>=3.0
+pytest>=7.0
+pytest-xdist>=3.0   # para rodar com -n auto

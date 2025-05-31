@@ -1,0 +1,48 @@
+name: CI - QuantTrading
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+      clickhouse:
+        image: clickhouse/clickhouse-server:23.5
+        ports: [8123:8123, 9000:9000]
+        options: --health-cmd "clickhouse-client --query 'SELECT 1'" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Compose up
+        run: |
+          docker compose -f docker/docker-compose.yml up -d
+
+      # - name: Lint (black, isort, pylint)
+      #   run: |
+      #     black --check .
+      #     isort --check-only .
+      #     pylint src/ || true   # não falha a pipeline por warning
+
+      - name: Run tests
+        run: |
+          pytest -n auto --maxfail=1 --disable-warnings

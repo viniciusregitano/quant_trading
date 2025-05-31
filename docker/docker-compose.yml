@@ -46,7 +46,7 @@ services:
     container_name: pref_server
     depends_on:
       - pref_db
-    command: ["bash", "-c", "prefect orion start --host 0.0.0.0 --port 4200"]
+    command: ["bash", "-c", "prefect server start --host 0.0.0.0 --port 4200"]
     ports:
       - "4200:4200"
     environment:
@@ -60,7 +60,7 @@ services:
     depends_on:
       - redis
       - clickhouse
-    command: ["bash", "-c", "python -m quant_trading.api"]
+    # command: ["bash", "-c", "python -m quant_trading.api"]
     ports:
       - "8000:8000"
     environment:
