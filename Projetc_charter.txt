@@ -1,0 +1,63 @@
+# Project Charter – QuantTrading (v 1.1)
+
+## Visão
+
+Multiplicar o capital inicial de **R\$ 50 000** até a **faixa de milhões** em **18 – 24 meses**, operando contratos de mini‑índice (WIN) com um robô **100 % autônomo**, resiliente e monitorado 24×5.
+
+## Objetivos SMART
+
+| Nº | Meta                                                           | Valor / Data        |
+| -- | -------------------------------------------------------------- | ------------------- |
+| 1  | **Sharpe anual ≥ 1,2** em conta **demo**                       | até **30 set 2025** |
+| 2  | **Drawdown máx. ≤ 20 %** sobre capital                         | no **1.º ano live** |
+| 3  | Robô operar **30 pregões consecutivos** sem intervenção manual | até **31 out 2025** |
+| 4  | **Impedir perdas > 3 %** em qualquer dia (circuit‑breaker)     | permanente          |
+| 5  | **Disponibilidade** do sistema ≥ 99 % durante pregão           | medido mensalmente  |
+
+## Escopo
+
+1. Estratégia base: MA‑breakout + filtros de contexto (Imbalance, HMM).
+2. Gatekeeper ML: LightGBM + quantis; opcional Mini‑TransLOB.
+3. Backtesting, paper‑trading e execução real via Backtrader / MT5.
+4. Operação em VPS SP; latência alvo ≤ 1 s sinal→ordem.
+5. MLOps com Qlib + Optuna + MLflow.
+
+## Stakeholders
+
+| Papel           | Nome / Função                     | Responsabilidade                       |
+| --------------- | --------------------------------- | -------------------------------------- |
+| Product Owner   | **Vinícius R.**                   | Visão, priorização de backlog, capital |
+| Quant Dev / Eng | **Você** (ChatGPT assistido)      | Especificação, código, testes          |
+| Broker / API    | **MT5 (Clear Corretora)**         | Execução de ordens, dados LIVE         |
+| Ops / Infra     | VPS Provider (Contabo SP)         | Uptime, rede, snapshots                |
+| Auditoria       | Contador / Compliance (a definir) | Relatórios de performance & risco      |
+
+## Critérios de “Done” (alto nível)
+
+1. **Robô live** operando em conta real, seguindo risk‑limits, com alertas Telegram.
+2. Dashboard Grafana apresenta PnL, DD, latência em tempo real.
+3. Pipeline Prefect `build_dataset → train → backtest → deploy` roda sem falha 4 semanas seguidas.
+4. Documentação (Architecture, Runbook, Guidelines) ≥ 90 % completa e atualizada.
+5. Auditoria demonstra conformidade com drawdown‑limit e stop‑diário.
+
+## Métricas‑chave de Sucesso
+
+* **ROI 12 m:** > 100 % líquido após taxas.
+* **Hit‑rate breakout:** ≥ 55 % a partir da 12.ª semana live.
+* **Slippage médio:** ≤ 1 tick por contrato.
+
+## Riscos críticos & Mitigação
+
+| Risco              | Impacto                       | Mitigação                                    |
+| ------------------ | ----------------------------- | -------------------------------------------- |
+| Latência ↑ > 1 s   | Perder entrada, slippage alto | VPS SP, ping monitor, fallback halt          |
+| Overfitting modelo | PnL cai no live               | Walk‑forward, OOS hold‑out, SHAP review      |
+| API MT5 fora do ar | Robô cego                     | Circuit‑breaker, feed fallback (data vendor) |
+| DD > 20 %          | Ruína financeira              | Stop‑diário, sizing adaptativo               |
+
+---
+
+### Versão
+
+* **v 1.0** – 31 mai 2025, escopo inicial.
+* **v 1.1** – 31 mai 2025, metas datadas, stakeholders completos, critérios “done”.

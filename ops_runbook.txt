@@ -1,0 +1,94 @@
+ # Ops Runbook – QuantTrading
+
+> Procedimentos operacionais para iniciar/parar o robô, executar rollback e responder a incidentes.
+> Versão 1.0 – manter ordenado cronologicamente; adicionar seções conforme novos cenários.
+
+---
+
+## 1. Rotina Diária (Horário BRT)
+
+| Horário | Ação                            | Comando / Observação                                  |
+| ------- | ------------------------------- | ----------------------------------------------------- |
+| 07:45   | Verificar VPS ligada (ping)     | `ping vps_ip` < 30 ms                                 |
+| 08:00   | Sincronizar relógio             | `sudo ntpdate pool.ntp.org`                           |
+| 08:55   | **Prefect** start trading       | `prefect deployment run start_robot`                  |
+| 09:00   | Confirmar feed ativo            | Grafana panel `feed_latency` < 50 ms                  |
+| 12:30   | Checar DD parcial               | Telegram bot envia snapshot; se DD < −1.5 %, observar |
+| 18:10   | **Prefect** stop trading        | `prefect deployment run stop_robot`                   |
+| 18:15   | Backup ClickHouse delta         | `bash backup_clickhouse.sh`                           |
+| 18:30   | Desligar VPS (durante Fase 0–6) | `sudo poweroff`                                       |
+
+---
+
+## 2. Deploy / Rollback
+
+### Deploy (main → VPS)
+
+1. `git pull origin main` no host.
+2. `docker compose pull && docker compose up -d --build`.
+3. Correr pipeline CI local: lint + tests.
+4. Confirmar container `signal-api` health = healthy.
+5. Executar `prefect deployment run start_robot` em modo **paper** (flag `--dry-run`).
+
+### Rollback
+
+1. `docker compose down`.
+2. `docker compose pull myrepo/quant_trading:<tag-antiga>`.
+3. `docker compose up -d`.
+4. Atualizar `VERSION` em Grafana annotation.
+
+---
+
+## 3. Incidentes
+
+### 3.1 Feed freeze (> 30 s sem tick)
+
+1. Telegram alerta **feed‑halt**.
+2. SSH VPS → `docker logs mt5_collector`.
+3. Se erro de conexão MT5:
+
+   * `systemctl restart mt5-terminal.service`.
+   * Reiniciar coletor: `docker restart mt5_collector`.
+4. Confirmar retomada no Redis (`XLEN stream > 100`).
+5. Registrar incidente em `incident_log.md`.
+
+### 3.2 Circuit Breaker diário ativado
+
+1. `risk:halt` flag set no Redis.
+2. Verificar PnL ClickHouse: `SELECT last_pnl FROM metrics ORDER BY ts DESC LIMIT 1`.
+3. Confirmar ordens fechadas (`positions = 0`).
+4. Deixar robô parado até pregão seguinte.
+
+### 3.3 VPS down
+
+1. Contato provedor; recuperar snapshot mais recente.
+2. Restaurar backup ClickHouse → `restore.sh`.
+3. Validar feed e let Prefect resume.
+
+---
+
+## 4. Backup & Restore
+
+* **ClickHouse**: incremental nightly (`clickhouse-backup create --tables trades,ticks,metrics`).
+* **Parquet OHLCV**: S3 sync weekly (`aws s3 sync data/ohlcv s3://qt-backup/ohlcv`).
+* **Docker images**: pushed to Docker Hub on each CI run.
+
+Restore procedure documented in `backup/README.md`.
+
+---
+
+## 5. Contactos & Credenciais
+
+| Item               | Local                        | Observação |
+| ------------------ | ---------------------------- | ---------- |
+| VPS root           | 1Password vault              | …          |
+| Telegram bot token | `.prefect/.env` (not in git) | …          |
+| Docker Hub creds   | GitHub Secrets               | …          |
+
+---
+
+## 6. Change Log
+
+| Data       | Modificação    | Autor   |
+| ---------- | -------------- | ------- |
+| 2025‑05‑31 | Versão inicial | ChatGPT |

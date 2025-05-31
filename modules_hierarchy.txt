@@ -1,0 +1,133 @@
+# Codebase & Module Hierarchy – QuantTrading
+
+> **Objetivo:** padronizar estrutura de diretórios, nomenclatura de pacotes, localização de scripts, assets e arquivos de configuração.  Serve como referência para novos contribuidores e para automações CI.
+
+---
+
+## 1. Diretório Raiz
+
+```
+quant_trading/            # pacote principal (pip install -e .)
+├── quant_trading/        # código Python (import quant_trading as qt)
+│   ├── __init__.py
+│   ├── data/            # data loaders / feature builders
+│   │   ├── __init__.py
+│   │   ├── feeds.py     # load_ohlcv, stream_lob
+│   │   └── features.py  # ATR, imbalance, etc.
+│   ├── models/          # ML models + wrappers
+│   │   ├── __init__.py
+│   │   ├── lgb_gate.py
+│   │   ├── lgb_quant.py
+│   │   └── translob.py
+│   ├── strategy/        # trading logic
+│   │   ├── __init__.py
+│   │   ├── ma_breakout.py
+│   │   └── filters.py
+│   ├── risk/            # sizing & risk guards
+│   │   ├── __init__.py
+│   │   ├── risk_atr.py
+│   │   └── breaker.py
+│   ├── backtest/
+│   │   ├── __init__.py
+│   │   ├── bt_wrapper.py
+│   │   └── reports.py
+│   ├── execution/
+│   │   ├── __init__.py
+│   │   ├── mt5_exec.py
+│   │   └── order.py
+│   ├── pipelines/       # Prefect flows
+│   │   ├── build_dataset.py
+│   │   ├── train_lgb.py
+│   │   └── evaluate_live.py
+│   └── utils/           # generic helpers (logging, timing)
+│       └── logger.py
+├── scripts/             # CLI entrypoints (`python scripts/x.py`)
+│   ├── start_local.sh
+│   ├── collect_mt5.py
+│   └── promote_model.py
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── tests/               # pytest unit/integration
+│   └── test_strategy.py
+├── notebooks/           # Jupyter research (gitignored large outputs)
+├── configs/             # YAML/JSON (strategy, risk, model)
+│   ├── strategy.yaml
+│   └── model.yaml
+├── requirements.txt
+├── README.md
+└── setup.cfg / pyproject.toml  # build metadata
+```
+
+### Convensões de nomes
+
+* **Módulos**: `snake_case.py`, classes `CamelCase`.
+* **Pacotes**: plural se contêm coleções (`models`, `pipelines`).
+* **Scripts**: verb-noun (`collect_mt5.py`, `start_local.sh`).
+
+---
+
+## 2. Principais Classes & Responsabilidades
+
+| Módulo                 | Classe               | Função                                        |
+| ---------------------- | -------------------- | --------------------------------------------- |
+| `strategy.ma_breakout` | `MABreakoutStrategy` | Detecta rompimento MA-fast/slow, gera sinal.  |
+| `strategy.filters`     | `OrderFlowFilter`    | Calcula desequilíbrio, spread; decide gating. |
+| `models.lgb_gate`      | `LightGBMGate`       | Carrega ONNX; prediz `p_success`.             |
+| `risk.risk_atr`        | `RiskATR`            | Size 1 % capital / (2×ATR).                   |
+| `execution.mt5_exec`   | `MT5Executor`        | Converte sinal em ordem via MetaTrader 5 API. |
+
+---
+
+## 3. Scripts Utilitários
+
+* `scripts/start_local.sh` – roda docker-compose + Prefect UI local para desenvolvimento.
+* `scripts/collect_mt5.py` – inicia coletor MT5, publica em Redis.
+* `scripts/promote_model.py` – CLI para mover modelo MLflow `Staging` → `Production` e atualizar env.
+
+> **Cada script** deve ter `if __name__ == "__main__":` e usar `argparse`.
+
+---
+
+## 4. Docker Compose (serviços)
+
+```yaml
+version: '3.9'
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.5
+    ports: ["8123:8123", "9000:9000"]
+  pref_db:
+    image: postgres:15
+  pref_server:
+    build: ./docker
+    command: prefect server start --host 0.0.0.0
+    environment:
+      - PREFECT_ORION_API_HOST=http://pref_server:4200
+  signal_api:
+    build: ./docker
+    command: python -m quant_trading.api
+    depends_on: [redis, clickhouse]
+```
+
+* Volumes mapeados para `./data` (Parquet) e `./backup`.
+* Prod VPS usa compose override com `restart: always` e logs para Loki (opcional).
+
+---
+
+## 5. CI Folders & Artifacts
+
+* **Docker image** tag = git SHA, pushed a `myrepo/quant_trading`.
+* **ML models** salvos em `s3://qt-models/{run-id}/model.onnx`.
+* Test reports `coverage.xml` → GitHub Actions artifact.
+
+---
+
+## 6. TODO / Extensões Futuras
+
+* Separar `proto/` caso gRPC seja adotado.
+* Adicionar `docs/` com mkdocs para documentação gerada.
+* Avaliar migração `setup.cfg` → `pyproject.toml` conforme PEP 621.

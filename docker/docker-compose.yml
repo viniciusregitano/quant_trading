@@ -1,0 +1,73 @@
+version: '3.9'
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 3
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.5
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ../data/clickhouse:/var/lib/clickhouse
+    environment:
+      - CLICKHOUSE_DB=quant
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' || exit 1"]
+      interval: 10s
+      retries: 3
+
+  pref_db:
+    image: postgres:15
+    container_name: pref_db
+    environment:
+      - POSTGRES_USER=prefect
+      - POSTGRES_PASSWORD=prefect
+      - POSTGRES_DB=prefect_orion
+    volumes:
+      - ../data/prefect_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "prefect"]
+      interval: 10s
+      retries: 5
+
+  pref_server:
+    build:
+      context: ..  # repo root
+      dockerfile: docker/Dockerfile
+    container_name: pref_server
+    depends_on:
+      - pref_db
+    command: ["bash", "-c", "prefect orion start --host 0.0.0.0 --port 4200"]
+    ports:
+      - "4200:4200"
+    environment:
+      - PREFECT_ORION_DATABASE_CONNECTION_URL=postgresql+asyncpg://prefect:prefect@pref_db:5432/prefect_orion
+
+  signal_api:
+    build:
+      context: ..  # repo root
+      dockerfile: docker/Dockerfile
+    container_name: signal_api
+    depends_on:
+      - redis
+      - clickhouse
+    command: ["bash", "-c", "python -m quant_trading.api"]
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_URI=${MODEL_URI}
+      - REDIS_HOST=redis
+      - CLICKHOUSE_HOST=clickhouse
+
+networks:
+  default:
+    name: qt_local

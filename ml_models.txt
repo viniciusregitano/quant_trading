@@ -1,0 +1,80 @@
+# ML Models, Experimentation & Pipelines – QuantTrading
+
+## 1. Model Catalogue & Objectives
+
+| Code‑Name                    | Tipo                        | Objetivo                                                           | Output               | Latência alvo    |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------ | -------------------- | ---------------- |
+| **LGB‑Gate**                 | LightGBM Classifier         | "Gatekeeper" – prob. de rompimento válido (win ≥ 1×ATR em ≤ 5 min) | `p_success` (0‑1)    | < 1 ms (ONNX RT) |
+| **LGB‑Quant**                | LightGBM Quantile Regressor | Calcular quantis (q10/q90) do retorno 5 min → ajustar alvo/stop    | `q10`, `q90` (ticks) | < 1 ms           |
+| **Mini‑TransLOB** (opcional) | Conv1D+Attention            | Confirmar micro‑flow (3 s) – prob. up/down                         | `p_up`, `p_down`     | < 3 ms           |
+| **HMM‑Regime**               | Hidden Markov (2 Estados)   | Detectar “trend” vs “range” p/ ativar estratégia                   | `state` (0/1)        | batch offline    |
+
+> **Nota:** qualquer novo modelo deve respeitar interface `fit(X, y)`, `predict(X)`, exportável para ONNX ou Pickle.
+
+---
+
+## 2. Experimentation Workflow (MLOps)
+
+```
+            +-----------------+
+            |  Qlib DataLoad  |
+            +--------+--------+
+                     |
+           features, labels
+                     V
+         +-----------+-----------+
+         |  Optuna Study Runner  |  <--- param grid / HPO
+         +-----------+-----------+
+                     |
+            best booster (LightGBM)
+                     V
+        +------------+------------+
+        |  MLflow Tracking (run)  |
+        +------------+------------+
+                     |
+                 onnx export
+                     V
+     s3://models/gatekeeper/…/gatekeeper.onnx
+```
+
+### Steps
+
+1. **Dataset build** (Prefect task):
+
+   * Window: last 90 days; freq 1 min; join with L1/L2 features.
+   * Save as `datasets/train_YYYYMMDD.pkl`.
+2. **Optuna tuning** (study `LGB‑Gate`):
+
+   * `num_leaves`, `max_depth`, `min_child_weight`, `colsample_bytree`, etc.
+   * Metric = AUC OOS (5‑fold time series split).
+3. **Register** best model in **MLflow** (`stage=Staging`).
+4. **Export** to ONNX; artifact logged.
+5. **Promotion to Production** via Prefect manual approval.
+
+---
+
+## 3. Versioning Rules
+
+* Semantic tag: `LGB-Gate_v{major}.{minor}`.
+* Model signature hash stored in ClickHouse table `model_registry`.
+* Production model path injected in `.env`: `MODEL_URI`.
+* Rollback: select previous hash, redeploy container.
+
+---
+
+## 4. Pipelines (Prefect)
+
+| Flow                 | Schedule         | Tasks                                       |
+| -------------------- | ---------------- | ------------------------------------------- |
+| **build\_dataset**   | daily 20:30      | pull raw, compute features, QC, save PKL    |
+| **train\_lgb\_gate** | weekly Sun 21:00 | Optuna 50 trials, log MLflow, notify Slack  |
+| **evaluate\_live**   | daily 19:00      | compare live PnL vs expected; write metrics |
+| **promote\_model**   | manual           | moves stage → Production; updates ConfigMap |
+
+---
+
+## 5. Open Points / TODO
+
+* Implement **feature drift monitor** (evidently).
+* Decide storage for **Mini‑TransLOB** (GPU vs CPU ONNX with ort‑cuda).
+* Add **model explainability** (SHAP) report in experiment artifacts.

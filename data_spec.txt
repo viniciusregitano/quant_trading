@@ -1,0 +1,69 @@
+ # Data Specification & Collection – QuantTrading
+
+## 1. Realtime Feed (MT5 Collector)
+
+* **Source**: MetaTrader 5 Python bridge (`mt5_collector.py`).
+
+* **Depth**: Level 1 & 2 (best bid/ask ± next level).
+
+* **Sampling**: 10 Hz (every 100 ms); burst to 20 Hz permitted in high‑vol.
+
+* **Fields**
+
+  | Name                    | Type          | Description                 |
+  | ----------------------- | ------------- | --------------------------- |
+  | `ts`                    | int64 (ns)    | Epoch timestamp of snapshot |
+  | `bid1` / `ask1`         | float         | Price best bid/ask          |
+  | `sizeBid1` / `sizeAsk1` | int           | Size @ level 1              |
+  | `bid2` / `ask2`         | float         | Price level 2               |
+  | `sizeBid2` / `sizeAsk2` | int           | Size level 2                |
+  | `last_price`            | float         | Last trade price (tick)     |
+  | `last_size`             | int           | Last trade size             |
+  | `aggressor`             | int (−1/0/+1) | −1 sell, +1 buy, 0 unknown  |
+
+* **Transport**: Redis‑Streams (`stream:win_m1_book`) with maxlen≈500 000 (≈1 hour).
+
+* **Logger**: Async process batches 1 s → writes Parquet to `data/realtime/YYYY/MM/DD/`.
+
+## 2. Historical OHLCV
+
+* **Source**: B3 FTP (`WIN$FUT` 1‑minute bars) & MT5 history filler.
+* **Schema (Parquet)**
+  `ts_open` | `open` | `high` | `low` | `close` | `volume` | `vwap`
+* **Partition path**: `ohlcv/minute/symbol=WIN/year=YYYY/month=MM/part‑*.parquet`.
+* **Compression**: `zstd, level=3`.
+
+## 3. Derived Features Store (Qlib‑HF)
+
+* Calculated nightly: ATR, MA\_fast/slow, imbalance, spread\_ticks, vol\_surge.
+* Saved to `qlib_data/features/<symbol>/freq=1min/` binary.
+
+## 4. Retention & Backup Policy
+
+| Data type          | Raw retention | Downsample | Backup                                  |
+| ------------------ | ------------- | ---------- | --------------------------------------- |
+| Tick/LOB snapshots | 6 meses       | N/A        | Weekly ZIP → S3 `s3://qt-backup/ticks/` |
+| 1‑min OHLCV        | 5 anos        | Keep       | Monthly Parquet bundle → S3             |
+| Aggregated metrics | 10 anos       | N/A        | ClickHouse replica on separate disk     |
+
+## 5. Data Quality Checks
+
+1. **Gap check** – verify 1‑min series continuity during pregão; tolerance ≤ 2 bars/day.
+2. **Price sanity** – reject ticks if |price – prev\_price| > 5 × ATR\_7.
+3. **Clock drift** – NTP sync VPS every 5 min (< 50 ms offset).
+
+## 6. Access Layer
+
+* `data/feeds.py` provides:
+
+  ```python
+  load_ohlcv(symbol: str, start: str, end: str) -> pd.DataFrame
+  stream_lob(redis_conn) -> Iterator[Dict]
+  ```
+* Producer & consumer decoupled via Redis to tolerate feed outage.
+
+## 7. TODO / Open Points
+
+* Decide on storing **level 3+** depth when capital > R\$ 1 mi.
+* Implement schema migration tool for Parquet columns.
+* Automate S3 lifecycle (glacier > 12 m).

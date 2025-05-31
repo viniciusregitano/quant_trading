@@ -1,0 +1,79 @@
+# Development Guidelines & CI – QuantTrading
+
+## 1. Branching Strategy
+
+| Branch             | Propósito                                                    | Regra de merge                                                        |
+| ------------------ | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `main`             | Código pronto para produção.  Tag a cada release (`vX.Y.Z`). | Só merge via **PR** revisada, CI verde, versão bump.                  |
+| `dev`              | Integração contínua quinzenal.                               | Merge squash de feature branches com prefixo `feat/`, `fix/`, `doc/`. |
+| `feat/<id>-<slug>` | Implementar nova feature ou tarefa do task board.            | Criada a partir de `dev`; PR para `dev`.                              |
+| `hotfix/<slug>`    | Correções urgentes em produção.                              | PR direto para `main` + cherry-pick em `dev`.                         |
+
+## 2. Código & Estilo
+
+* **Python 3.10** (tip hints requeridos).
+* **Black** (`line-length 88`) + **isort** (profile Black).
+* **pylint**: score mínimo **≥ 8.0**.
+* Docstrings **numpydoc**; cada módulo público tem `__all__` e doc top-level.
+* Testes unitários **pytest** (`tests/`) com cobertura ≥ 70 % (medido via `pytest --cov`).
+* Arquivos grandes (data, modelos) ignorados no Git; armazenar em DVC ou artefatos CI.
+
+## 3. Commit Convention
+
+`<type>(scope): <message>` – [Conventional Commits].
+
+* `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, `chore`.
+
+## 4. GitHub Actions CI/CD
+
+```
+name: CI
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install deps
+        run: |
+          pip install -r quant_trading_requirements.txt
+          pip install black isort pylint pytest pytest-cov
+      - name: Lint & format check
+        run: |
+          black --check .
+          isort --check-only .
+          pylint $(git ls-files '*.py') || true
+      - name: Tests
+        run: pytest --cov=quant_trading
+      - name: Build Docker image
+        if: github.ref == 'refs/heads/main'
+        run: docker build -t myrepo/quant_trading:${{ github.sha }} .
+      - name: Push Docker
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with: {username: ${{ secrets.DOCKER_USER }}, password: ${{ secrets.DOCKER_PASS }} }
+      - run: docker push myrepo/quant_trading:${{ github.sha }}
+```
+
+## 5. Review Checklist
+
+* [ ] Passou CI (lint+tests).
+* [ ] Cobertura → novo ou igual.
+* [ ] Docstring e type-hints.
+* [ ] Relaciona Issue/Tarefa (`closes #T-1.2`).
+* [ ] Comentário de performance (se muda feed/executor).
+
+## 6. Local Dev Commands
+
+```bash
+pip install -r quant_trading_requirements.txt
+pre-commit install  # roda black/isort/pylint antes do commit
+docker compose up -d clickhouse redis
+pytest -n auto
+```
+
+[Conventional Commits]: https://www.conventionalcommits.org
