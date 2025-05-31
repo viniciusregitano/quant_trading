@@ -1,0 +1,99 @@
+# QuantTrading – Task Board & Delivery Stages
+
+> **Uso sugerido**: mover tarefas entre as seções **Backlog → In Progress → Done**
+> a cada sprint quinzenal (4–6 h/semana).
+
+---
+
+## 🗂️ Backlog (por Fase)
+
+### Fase 0 – Kick‑off & Infra
+
+| ID    | Est. | Título                          | Saída (DoD)                                           |
+| ----- | ---- | ------------------------------- | ----------------------------------------------------- |
+| T‑0.1 | 2 h  | Configurar Docker Compose local | `docker-compose.yml` roda sem erro; README atualizado |
+| T‑0.2 | 3 h  | Script MT5 → Redis              | 1 min de book L1/L2 capturado; teste unitário passa   |
+| T‑0.3 | 1 h  | Provisionar VPS temporária      | Ping < 30 ms; snapshot salvo, VPS desligada           |
+
+### Fase 1 – Dados & Feed
+
+| ID    | Est. | Título                           | Saída (DoD)                       |
+| ----- | ---- | -------------------------------- | --------------------------------- |
+| T‑1.1 | 4 h  | Baixar histórico WIN 1 min (3 y) | Parquets validados                |
+| T‑1.2 | 6 h  | Consumer realtime MT5 → Redis    | Monitor Grafana “Feed Live” ativo |
+
+### Fase 2 – Estratégia MVP
+
+| ID    | Est. | Título             | Saída (DoD)                  |
+| ----- | ---- | ------------------ | ---------------------------- |
+| T‑2.1 | 4 h  | CrossMAStrategy    | testes unitários; pylint ≥ 8 |
+| T‑2.2 | 3 h  | RiskATR 1 % cap    | sizing correto em BT         |
+| T‑2.3 | 4 h  | CustomBTWrapper    | backtest 3 a sem erro        |
+| T‑2.4 | 5 h  | Relatório baseline | PDF salvo em `reports/`      |
+
+### Fase 3 – Filtros de Contexto
+
+| ID    | Est. | Título                      | DoD                      |
+| ----- | ---- | --------------------------- | ------------------------ |
+| T‑3.1 | 3 h  | Imbalance & Spread features | features no store        |
+| T‑3.2 | 2 h  | Keltner/HMM regime          | flag ≥ 80 % acc          |
+| T‑3.3 | 3 h  | Integrar filtros            | Sharpe +20 % Vs baseline |
+
+### Fase 4 – LightGBM Gatekeeper
+
+| ID    | Est. | Título                | DoD                                  |
+| ----- | ---- | --------------------- | ------------------------------------ |
+| T‑4.1 | 3 h  | Features LGBM         | DataFrame salvo                      |
+| T‑4.2 | 3 h  | Treinar LGBM+Quantile | `gatekeeper.onnx` export, AUC ≥ 0.63 |
+| T‑4.3 | 2 h  | Conectar modelo       | Sharpe ≥ 1.2                         |
+
+### Fase 5 – Risk Engine Avançado
+
+| ID    | Est. | Título                 | DoD                   |
+| ----- | ---- | ---------------------- | --------------------- |
+| T‑5.1 | 3 h  | Dynamic stop/sizing    | testes green          |
+| T‑5.2 | 3 h  | Circuit breaker diário | halt flag funcionando |
+
+### Fase 6 – Mini‑TransLOB (opcional)
+
+| ID    | Est. | Título              | DoD                         |
+| ----- | ---- | ------------------- | --------------------------- |
+| T‑6.1 | 4 h  | Coletar 5 d L1/L2   | Parquet 4 GB                |
+| T‑6.2 | 6 h  | Treinar Conv1D‑Attn | `translob.onnx`, AUC > 0.58 |
+| T‑6.3 | 2 h  | Plug filtro blend   | Sharpe +0.1, lat < 3 ms     |
+
+### Fase 7 – Automação & Monitor
+
+| ID    | Est. | Título             | DoD                 |
+| ----- | ---- | ------------------ | ------------------- |
+| T‑7.1 | 4 h  | Prefect flows      | 5 dias sem falha    |
+| T‑7.2 | 4 h  | Grafana dashboards | screenshot anexado  |
+| T‑7.3 | 2 h  | Telegram alerts    | mensagens recebidas |
+
+### Fase 8 – Paper Trading
+
+| ID    | Est. | Título                 | DoD                                 |
+| ----- | ---- | ---------------------- | ----------------------------------- |
+| T‑8.1 | 10 h | Operar 20 pregões demo | slippage ≤ 1 tick, Sharpe live ≈ BT |
+
+### Fase 9 – Go‑Live
+
+| ID    | Est. | Título             | DoD                        |
+| ----- | ---- | ------------------ | -------------------------- |
+| T‑9.1 | 4 h  | Checklist produção | first trade real executado |
+
+### Fase 10 – Nightly Optimizer
+
+| ID     | Est. | Título                  | DoD                     |
+| ------ | ---- | ----------------------- | ----------------------- |
+| T‑10.1 | 8 h  | Agente LangChain Optuna | novo config se Sharpe ↑ |
+
+---
+
+## 🚧 In Progress
+
+*(mova aqui o que está sendo executado nesta quinzena)*
+
+## ✅ Done
+
+*(tarefas concluídas e aprovadas)*

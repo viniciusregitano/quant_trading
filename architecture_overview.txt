@@ -1,0 +1,55 @@
+# Architecture Overview – QuantTrading
+
+> **Objetivo:** apresentação de alto nível da arquitetura técnica, incluindo camadas, tecnologias, pontos de extensão e decisões já congeladas.
+
+---
+
+## 1. Camadas Principais
+
+| # | Camada                | Tooling / Stack                            | Função-chave                                                                                                                                    |
+| - | --------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 | **Data Lake**         | Parquet (OTC) + ClickHouse (tabular)       | Armazenar histórico de OHLCV 1 min, snapshots de L1/L2, métricas de performance.  Particionado por `symbol/year/month`.  Backup incremental S3. |
+| 2 | **Stream Hub**        | Redis‑Streams (10 Hz)                      | Buffer de ticks/LOB em tempo‑real vindos do coletor MT5; publish/subscribe para Signal API e logger.                                            |
+| 3 | **Research Engine**   | Qlib‑HF (provider Parquet)                 | Feature store, splits walk‑forward, Optuna HPO, versionamento de modelos; integra com MLflow.                                                   |
+| 4 | **Model Registry**    | MLflow + ONNX                              | Armazena pesos e metadados do *LightGBM Gatekeeper* e, futuramente, TransLOB light.                                                             |
+| 5 | **Signal Service**    | FastAPI + ONNX Runtime                     | Endpoint `/infer` (JSON → prob, quantis) latência < 2 ms; roda dentro do contêiner `signal-api`.                                                |
+| 6 | **Risk Engine**       | Python package (`risk_engine.py`)          | Cálculo de size (1 % capital / 2×ATR), stop dinâmico, circuit breaker (-3 % dia).                                                               |
+| 7 | **Execution Adapter** | Backtrader (offline) / MT5 API (live)      | Converte sinal → ordens. Mesmo objeto `Order` para simulação e produção.                                                                        |
+| 8 | **Monitoring**        | Grafana + Prometheus export / Telegram Bot | Latência feed, PnL, DD ao vivo, alertas.                                                                                                        |
+
+> **Extensão futura**: micro‑serviço C++ (parser LOB) e TransLOB filter podem ser plugados entre Camadas 2 e 5.
+
+---
+
+## 2. Fluxo de Dados (simplificado)
+
+```
+MT5 Feed → Redis‑Streams → Signal Service (LGBM) → Risk Engine → Execution Adapter → MT5
+                                        ↘ ClickHouse (ticks, trades) ↗
+```
+
+---
+
+## 3. Decisões Fixadas (não mudar sem RFC)
+
+* **Estratégia base**: breakout de MA‑Fast/Slow + filtros (Imbalance, Keltner/HMM).
+* **Modelo Gatekeeper**: LightGBM classifier + Quantile regressor (q10/q90).  Exportado em ONNX.
+* **Latência‑alvo**: **≤ 1 s** de sinal → ordem para targets > 100 pts; sub‑100 ms não prioritário.
+* **Granularidade de bar**: 1 min para decisão principal; tick/LOB apenas para filtros.
+* **Risk limit**: 1 % capital por trade; stop diário −3 % (flag `risk:halt`).
+
+---
+
+## 4. Pontos de Extensão
+
+* **Mini‑TransLOB Light** – plugar após Signal Service como extra‑gate.
+* **Nightly Optimizer** – LangChain agent roda Optuna via Qlib e promove param‑set.
+* **Execution FIX** – substituir MT5 API por FIX 4.4 sem alterar Risk Engine.
+
+---
+
+## 5. Próximos Itens de Arquitetura
+
+1. Definir esquema ClickHouse (tabela `ticks`, `trades`, `metrics`).
+2. Desenhar diagrama de rede VPS (ports, firewall).
+3. Especificar contrato JSON de `/infer` e `/order` para testes end‑to‑end.
