@@ -10,16 +10,6 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
 
-    services:
-      redis:
-        image: redis:7-alpine
-        ports: [6379:6379]
-        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
-      clickhouse:
-        image: clickhouse/clickhouse-server:23.5
-        ports: [8123:8123, 9000:9000]
-        options: --health-cmd "clickhouse-client --query 'SELECT 1'" --health-interval 10s --health-timeout 5s --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,9 +23,26 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Compose up
+      - name: Docker Compose Up
         run: |
           docker compose -f docker/docker-compose.yml up -d
+          # Aguarda os containers ficarem healthy (máx 60s)
+          docker compose -f docker/docker-compose.yml ps
+          for i in {1..12}; do
+            unhealthy=$(docker compose -f docker/docker-compose.yml ps | grep -c unhealthy || true)
+            [ "$unhealthy" -eq 0 ] && break
+            echo "Aguardando containers ficarem healthy..."
+            sleep 5
+          done
+          docker compose -f docker/docker-compose.yml ps
+
+      - name: Smoke Test Redis
+        run: |
+          docker run --network qt_local --rm redis:7-alpine redis-cli -h redis ping
+
+      - name: Smoke Test ClickHouse
+        run: |
+          docker run --network qt_local --rm clickhouse/clickhouse-server:23.5 clickhouse-client --host clickhouse --query "SELECT 1"
 
       # - name: Lint (black, isort, pylint)
       #   run: |
@@ -46,3 +53,8 @@ jobs:
       - name: Run tests
         run: |
           pytest -n auto --maxfail=1 --disable-warnings
+
+      - name: Docker Compose Down
+        if: always()
+        run: |
+          docker compose -f docker/docker-compose.yml down
