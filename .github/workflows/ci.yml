@@ -36,6 +36,16 @@ jobs:
           done
           docker compose -f docker/docker-compose.yml ps
 
+      - name: Wait for ClickHouse healthy
+        run: |
+          for i in {1..20}; do
+            status=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose -f docker/docker-compose.yml ps -q clickhouse))
+            echo "ClickHouse health: $status"
+            if [ "$status" = "healthy" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "ClickHouse não ficou healthy em tempo hábil"; exit 1
+
       - name: Smoke Test Redis
         run: |
           docker run --network qt_local --rm redis:7-alpine redis-cli -h redis ping
